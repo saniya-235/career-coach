@@ -41,9 +41,17 @@ def send_message(
     )
     formatted = [{"role": m.role, "content": m.content} for m in history]
 
+    # Close the read transaction before waiting for the AI response
+    user_id = current_user.id
+    db.rollback()
+
     reply_text = get_chat_reply(formatted)
 
-    assistant_msg = ChatMessage(role="assistant", content=reply_text, owner_id=current_user.id)
+    assistant_msg = ChatMessage(
+    role="assistant",
+    content=reply_text,
+    owner_id=user_id
+)
     db.add(assistant_msg)
     db.commit()
     db.refresh(assistant_msg)

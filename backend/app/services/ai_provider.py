@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict
+import time
 
 from fastapi import HTTPException
 
@@ -42,6 +43,7 @@ class OpenAIProvider(AIProvider):
         return response.choices[0].message.content
 
 
+
 class GeminiProvider(AIProvider):
     def __init__(self):
         from google import genai
@@ -58,15 +60,49 @@ class GeminiProvider(AIProvider):
             )
             for m in messages
         ]
-        response = self.client.models.generate_content(
-            model="gemini-3.8-flash",
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                max_output_tokens=1024,
-            ),
-        )
+
+        max_retries = 2
+
+        start_time = time.time()
+        for attempt in range(max_retries):
+            try:
+                response = self.client.models.generate_content(
+                    model="gemini-3.8-flash",
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        max_output_tokens=8192,
+                    ),
+                )
+                break
+
+            except Exception as e:
+                error_message = str(e).upper()
+
+                is_temporary_error = any(
+                    error in error_message
+                    for error in [
+                        "503", "UNAVAILABLE", "429",
+                        "RESOURCE_EXHAUSTED", "500", "502", "504"
+                    ]
+                )
+
+                if not is_temporary_error or attempt == max_retries - 1:
+                    raise
+
+                wait_time = 1
+                print(
+                    f"Gemini temporarily unavailable. "
+                    f"Retrying in {wait_time} seconds..."
+                )
+                time.sleep(wait_time)
+
+        if not response.text:
+            raise ValueError("Gemini returned an empty response.")
+        
+        print(f"Gemini response completed in {time.time() - start_time:.2f} seconds")
         return response.text
+
 
 
 _provider_instance = None
